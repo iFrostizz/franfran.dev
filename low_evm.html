@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="description" content="franfran website"/>
+
+    <title>franfran.dev</title>
+
+    <link rel="stylesheet" href="styles.css" type="text/css"/>
+    <link rel="stylesheet" href="article.css" type="text/css"/>
+</head>
+
+<body>
+<div id="body">
+    <div id="preamble">
+        <div id="menu">
+            <a href="./index.html">Home</a>
+            <a href="./thoughts.html">Thoughts</a>
+        </div>
+    </div>
+  <h1>This article is about low-level EVM</h1>
+  <div id="description">
+    What you may want to do next time there is an EVM challenge
+  </div>
+  <div id="content">
+<p>
+So you've just came across your Twitter TL, and found an EVM challenge that just dropped, anon.
+The goal is to steal some ETH on a contract, but you only have 1 hour. So you quickly open the etherscan contract in your browser and see that the contract is not verified.
+How's that, how am I supposed to read bytecode ?
+Bullet time: that's what we are going to learn today.
+</p>
+
+<p>
+Although this guide is quite comprehensive about reading and decoding EVM bytecode, it is assumed that you already understand the fundamentals of the Ethereum Blockchain, as well as opcodes. They are amazing writings about those, so I strongly advise you to read them before coming back here if you're not feeling confortable with these notions:
+<ul>
+  <li> <a href="https://noxx.substack.com/p/evm-deep-dives-the-path-to-shadowy">https://noxx.substack.com/p/evm-deep-dives-the-path-to-shadowy</a>
+    <li> <a href="https://blog.openzeppelin.com/deconstructing-a-solidity-contract-part-i-introduction-832efd2d7737">
+        https://blog.openzeppelin.com/deconstructing-a-solidity-contract-part-i-introduction-832efd2d7737</a>
+</ul>
+
+Ready ? Nice !
+
+</p>
+
+<p>
+Now that you have grabbed your bytecode, let's try to decipher it.
+If you have already written and read Huff, that's even better because that's what we are going to talk about.
+Huff is a wrapper around EVM bytecode with <i>some</i> helpers, but not too much. It does not hide the inner workings and quirks of the EVM. It lets you write mnemonics with some syntax sugar like labels, functions, macros, constants, and compile it to pure bytecode.
+</p>
+
+<p>
+
+Note: this is a stripped version of the challenge made by Convergence Boy on <a href="https://twitter.com/0x796/status/1608553575969611777">twitter</a>
+
+</p>
+
+<p>
+The first step is that we are going to transpile the EVM bytecode into a more readable way. Note that we call it transpilation rather than decompilation because the tool won't do any work for you. But theoretically you could transpile it from bytecode to huff and compile the transpiled version back to bytecode.
+It's a tool that I've developed called <a href="https://github.com/iFrostizz/murph">murph</a>, and that's all what it does. Though, I may add some formatting helpers (which is a manual task right now) in order to make the huff code a little bit more readable.
+</p>
+
+<p>
+This is the bytecode that you just found in the "Contract" tab:
+</p>
+  <code>0x601f8060093d393df33461001857335461000e573d3dfd5b3d3d3d3d47335af1005b4833553d3df3</code>
+  <p>
+  Yeah I don't speak that language neither. But let's make it more readable using murph.
+</p>
+	<code>$ murph -b 0x601f8060093d393df33461001857335461000e573d3dfd5b3d3d3d3d47335af1005b4833553d3df3 -s -f your_file.huff</code>
+<p>
+<ul><li><code>-b</code> flag stands for "bytecode"
+<li><code>-s</code> means that we want to strip the constructor code
+<li><code>-f</code> is the file that want to write the code to</ul>
+<p>
+Now we can open "your_file.huff" to try to decipher that.
+</p>
+<p>
+<code>
+
+#define macro MAIN() = takes(0) returns(0) {
+  callvalue
+  jump_24
+  jumpi
+  caller
+  sload
+  jump_14
+  jumpi
+  returndatasize
+  returndatasize
+  revert
+  jump_14:
+  returndatasize
+  returndatasize
+  returndatasize
+  returndatasize
+  selfbalance
+  caller
+  gas
+  call
+  stop
+  jump_24:
+  basefee
+  caller
+  sstore
+  returndatasize
+  returndatasize
+  return
+}
+
+</code>
+</p>
+<p>
+We will format it a little bit better for readability
+</p>
+<p>
+<code>
+
+#define macro MAIN() = takes(0) returns(0) {
+  callvalue jump_24 jumpi
+  caller sload
+  jump_14 jumpi
+
+  returndatasize returndatasize revert
+
+  jump_14:
+  returndatasize returndatasize returndatasize returndatasize
+  selfbalance caller gas call
+  stop
+
+  jump_24:
+  basefee caller sstore
+  returndatasize returndatasize return
+}
+
+</code>
+
+And even better with comments
+
+<code>
+
+#define macro MAIN() = takes(0) returns(0) {
+  callvalue               // [msg.value > 0 ?]
+  jump_24 jumpi           // []
+  caller sload            // [sload(msg.sender) != 0 ?]
+  jump_14 jumpi           // []
+
+  returndatasize returndatasize revert
+
+  jump_14:
+  returndatasize returndatasize returndatasize returndatasize // [0, 0, 0, 0]
+  selfbalance caller gas                                      	// [gas, to, value, 0, 0, 0, 0]
+  call                                                        // [success]
+  stop                                                        // []
+
+  jump_24:
+  basefee caller                                              // [msg.sender, basefee]
+  sstore                                                      // []
+  returndatasize returndatasize return                        // []
+}
+
+</div>
+</div>
+</body>
+</html>
+
+
