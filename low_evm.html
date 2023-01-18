@@ -11,24 +11,24 @@
     <link rel="stylesheet" href="article.css" type="text/css"/>
 </head>
 
-<body>
-<div id="body">
+<body id="article">
+<div id="article">
     <div id="preamble">
         <div id="menu">
             <a href="./index.html">Home</a>
             <a href="./thoughts.html">Thoughts</a>
         </div>
     </div>
-  <h1>This article is about low-level EVM</h1>
+  <h1>Low-level EVM</h1>
   <div id="description">
-    What you may want to do next time there is an EVM challenge
+    What you may want to do next time there is an EVM challenge popping on Twitter
   </div>
   <div id="content">
 <p>
-So you've just came across your Twitter TL, and found an EVM challenge that just dropped, anon.
+So you've just came across your Twitter TL, and found an EVM challenge that just dropped.
 The goal is to steal some ETH on a contract, but you only have 1 hour. So you quickly open the etherscan contract in your browser and see that the contract is not verified.
 How's that, how am I supposed to read bytecode ?
-Bullet time: that's what we are going to learn today.
+Bullet time: that's what we are going to learn today, anon.
 </p>
 
 <p>
@@ -76,8 +76,8 @@ This is the bytecode that you just found in the "Contract" tab:
 Now we can open "your_file.huff" to try to decipher that.
 </p>
 <p>
-<code>
-
+<pre id="huff">
+// your_file.huff
 #define macro MAIN() = takes(0) returns(0) {
   callvalue
   jump_24
@@ -107,15 +107,14 @@ Now we can open "your_file.huff" to try to decipher that.
   returndatasize
   return
 }
-
-</code>
+</pre>
 </p>
 <p>
 We will format it a little bit better for readability
 </p>
 <p>
-<code>
-
+<pre id="huff">
+// your_file.huff
 #define macro MAIN() = takes(0) returns(0) {
   callvalue jump_24 jumpi
   caller sload
@@ -132,13 +131,12 @@ We will format it a little bit better for readability
   basefee caller sstore
   returndatasize returndatasize return
 }
-
-</code>
+</pre>
 
 And even better with comments
 
-<code>
-
+<pre id="huff">
+// your_file.huff
 #define macro MAIN() = takes(0) returns(0) {
   callvalue               // [msg.value > 0 ?]
   jump_24 jumpi           // []
@@ -148,20 +146,173 @@ And even better with comments
   returndatasize returndatasize revert
 
   jump_14:
-  returndatasize returndatasize returndatasize returndatasize // [0, 0, 0, 0]
-  selfbalance caller gas                                      	// [gas, to, value, 0, 0, 0, 0]
-  call                                                        // [success]
-  stop                                                        // []
+  returndatasize returndatasize // [0, 0]
+  returndatasize returndatasize // [0, 0, 0, 0]
+  selfbalance caller gas        // [gas, to, value, 0, 0, 0, 0]
+  call                          // [success]
+  stop
 
   jump_24:
-  basefee caller                                              // [msg.sender, basefee]
-  sstore                                                      // []
-  returndatasize returndatasize return                        // []
+  basefee caller                // [msg.sender, basefee]
+  sstore                        // []
+  returndatasize returndatasize return
 }
+</pre>
+
+<p>
+Now let's deep dive.
+</p>
+
+<p>
+<h3>Understanding what's going on</h3>
+This is the first part of the challenge. Always remember that each instruction is called sequentially on the EVM. You can think of it like a one threaded system.
+
+What can be usually done in Huff is to use stack comments. They are added as comments by the user in order to understand what is the state of the stack at each instruction and they help to understand how everything works.
+
+<pre id="huff">
+// your_file.huff
+#define macro MAIN() = takes(0) returns(0) {
+  callvalue
+  jump_24 jumpi
+}
+</pre>
+
+As we enter the main execution, "callvalue" is used. We can lookup what is this instruction in <a href="evm.codes">evm.codes</a> and see that it returns the value in the current context.
+If you're familiar with Solidity, it's like writing "msg.value".
+
+Next, <code>jump_24</code> is a label. It's going to be replaced after compilation by the PC (bytes offset in the init code) and used to JUMP. It was called by murph like that because the JUMPDEST was found and is located at the PC 24. If it was not found it would look like <code>jump_<!24></code>.
+
+JUMPI is a conditional jump. If the condition at position 1 of the stack is nullish, it won't jump. Else (any value else than 0), it's gonna jump.
+
+So we can write it like this:
+
+<pre id="huff">
+// your_file.huff
+#define macro MAIN() = takes(0) returns(0) {
+  callvalue               // [msg.value > 0 ?]
+  jump_24 jumpi           // []
+}
+</pre>
+
+If the value is not 0, it's going to jump to <code>jump_24</code>. What are we doing at this location ?
+
+<pre id="huff">
+// your_file.huff  
+  jump_24:
+  basefee caller sstore
+  returndatasize returndatasize return
+</pre>
+
+We are adding <code>basefee</code> and <code>caller</code> on the stack, then using <code>sstore</code>. This is basically storing <code>basefee</code> at <code>msg.sender</code> in the contract storage. After that, we somewhat <code>return</code> from the current execution context, but what are those <code>returndatasize</code> ?
+
+<code>returndatasize</code> is communly used as a "cheap PUSH1 0" by fellow optimizooors. If no call context has been opened just before, the returndatasize will be 0 and it's only taking one bytes, compared to PUSH1 0 which takes 2 bytes and costs 3 gas compared to 2 for the magic trick. Neat, right ?
+
+Note: this may be solved in a future hard fork with the <a href="https://eips.ethereum.org/EIPS/eip-3855">PUSH0</a> opcode.
+
+Formatting our code, it now looks like that:
+
+ <pre id="huff">
+// your_file.huff  
+  jump_24:
+  basefee caller                // [msg.sender, basefee]
+  sstore                        // []
+  returndatasize returndatasize return
+</pre>
+
+Remembering that we now have stored some stuff at msg.sender in the storage, let's continue !
+
+<pre id="huff">
+// your_file.huff
+  caller sload
+  jump_14 jumpi
+
+  returndatasize returndatasize revert
+</pre>
+
+Looks like it's pushing the caller address on the stack, and loading this key from the storage. Seems familiar right ?
+Yeah, it's going to load the <code>basefee</code> previously stored at the caller key, which is now a non-nullish value. If we hadn't done that before, that wouldn't have jumped.
+
+#### What would have happened ?
+
+It would had reverted the current execution completely, using <code>returndatasize</code> to push some cheap 0's to feed the revert opcode.
+
+Comments !
+
+<pre id="huff">
+// your_file.huff
+  caller sload            // [sload(msg.sender) != 0 ?]
+  jump_14 jumpi           // []
+
+  returndatasize returndatasize revert
+</pre>
+
+Now that we've came past this JUMP, we can see what is under the <code>jump_14</code>
+
+<pre id="huff">
+// your_file.huff
+  jump_14:
+  returndatasize returndatasize
+  returndatasize returndatasize
+  selfbalance caller gas
+  call
+  stop
+</pre>
+
+still the same returndatasize opcode. We are familiar with it, it's pushing 4 zeros on the stack.
+<code>selfbalance</code> is pushing the contract balance on the stack, <code>caller</code> is still the msg.sender, and <code>gas</code> pushes the forwarded gas remaining in the current execution context, and then <code>call</code>.
+It's sending the whole contract balance to the caller of this context. Seems like we have a way to drain the contract !
+After some magic...
+
+<pre id="huff">
+// your_file.huff
+  jump_14:
+  returndatasize returndatasize // [0, 0]
+  returndatasize returndatasize // [0, 0, 0, 0]
+  selfbalance caller gas        // [gas, to, value, 0, 0, 0, 0]
+  call                          // [success]
+  stop
+</pre>
+
+... we can write a POC using foundry.
+
+<pre id="solidity">
+// POC.t.sol
+function testEVM() public {
+    bytes memory code = hex"601f8060093d393df33461001857335461
+    000e573d3dfd5b3d3d3d3d47335af1005b4833553d3df3";
+
+    address a = deployCode(code);
+
+    // Give some rewards
+    vm.deal(a, 10 ether);
+
+    uint256 bal = address(this).balance;
+    // 1.
+    a.call{value: 1 wei}("");
+    // 2.
+    a.call("");
+    // Check
+    assertGt(address(this).balance + 9.9 ether, bal);
+}
+</pre>
+
+And run it!
+
+<pre id="shell">
+<span id="prompt">$ forge test --match-test testEVM</span>
+<span id="output">[⠢] Compiling...
+[⠃] Compiling 1 files with 0.8.17
+[⠊] Solc 0.8.17 finished in 568.49ms
+Running 1 test for test/EVM.t.sol:EVMTest
+[PASS] testEVM() (gas: 77877)
+Test result: ok. 1 passed; 0 failed; finished in 938.16ms</span>
+</pre>
+
+Thanks for reading ! Don't hesitate to contact me if you have any questions, or ideas for the theme of the next article.
+
+</p>
 
 </div>
 </div>
 </body>
 </html>
-
-

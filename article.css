@@ -5,3 +5,61 @@ div#description {
 div#content {
     
 }
+
+pre#huff:before {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #002b36;
+  z-index: -1;
+}
+
+pre#huff {
+  color: #839496;
+  position: relative;
+}
+
+pre#solidity:before {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #002b36;
+  z-index: -1;
+}
+
+pre#solidity {
+  color: #839496;
+  position: relative;
+}
+
+pre#shell:before {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #002b36;
+  z-index: -1;
+}
+
+pre#shell {
+  position: relative;
+}
+
+span#prompt {
+  color: #839496;
+}
+
+span#output {
+  color: #00CA00;
+}
