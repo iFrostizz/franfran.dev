@@ -2,11 +2,7 @@ div#description {
     opacity: 0.5;
 }
 
-div#content {
-    
-}
-
-pre#huff:before {
+pre.huff:before {
   content: "";
   display: block;
   position: absolute;
@@ -18,7 +14,7 @@ pre#huff:before {
   z-index: -1;
 }
 
-pre#huff {
+pre.huff {
   color: #839496;
   position: relative;
 }

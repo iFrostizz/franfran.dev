@@ -34,7 +34,7 @@ body {
     max-width: 1000px;
 }
 
-div#home {
+div.home {
     line-height: 1.6;
     font-size: 18px;
     padding: 0 10px;
@@ -42,7 +42,7 @@ div#home {
     max-width: 700px;
 }
 
-div#article {
+div.article {
     line-height: 1.6;
     font-size: 18px;
     padding: 0 10px;
